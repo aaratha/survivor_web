@@ -3,6 +3,10 @@ use bevy::sprite::{MaterialMesh2dBundle, Mesh2dHandle};
 use bevy::ui::update;
 use bevy::window::PrimaryWindow;
 
+// build commands:
+// cargo build --release --target wasm32-unknown-unknown
+// wasm-bindgen --out-dir ./webbuild/out/ --target web ./target/wasm32-unknown-unknown/release/web-game.wasm
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
