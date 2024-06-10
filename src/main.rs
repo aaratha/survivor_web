@@ -12,8 +12,6 @@ use rand::prelude::*;
 // cargo build --release --target wasm32-unknown-unknown
 // wasm-bindgen --out-dir ./webbuild/out/ --target web ./target/wasm32-unknown-unknown/release/web-game.wasm
 
-const SUBSTEPS: i32 = 5;
-
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins, ShapePlugin))
@@ -30,16 +28,16 @@ fn main() {
             TimerMode::Repeating,
         )))
         .add_systems(Startup, setup)
+        .add_systems(Update, (render))
         .add_systems(
-            Update,
+            FixedUpdate,
             (
-                render,
-                update,
                 handle_mouse,
                 spawn_enemies,
                 spawn_food,
                 rope_collisions,
                 enemy_collisions,
+                update,
             ),
         )
         .run();
@@ -96,9 +94,7 @@ impl Rope {
             self.points[i] = next_position;
         }
 
-        for _ in 0..SUBSTEPS {
-            self.constrain_points();
-        }
+        self.constrain_points();
 
         self.points[0] = mouse_pos;
     }
@@ -142,14 +138,12 @@ impl Enemy {
     }
 
     fn update(&mut self, target: Vec2, acceleration: f32) {
-        for _ in 0..SUBSTEPS {
-            let velocity = self.position - self.position_prev;
-            let direction_to_target = (target - self.position).normalize();
-            let acceleration = direction_to_target * acceleration; // Adjust the 0.1 value to change the acceleration strength
-            let next_position = self.position + velocity / 1.008 + acceleration;
-            self.position_prev = self.position;
-            self.position = next_position;
-        }
+        let velocity = self.position - self.position_prev;
+        let direction_to_target = (target - self.position).normalize();
+        let acceleration = direction_to_target * acceleration; // Adjust the 0.1 value to change the acceleration strength
+        let next_position = self.position + velocity / 1.008 + acceleration;
+        self.position_prev = self.position;
+        self.position = next_position;
     }
 }
 
@@ -326,14 +320,12 @@ fn spawn_enemies(
 
             // Spawn the enemy at the calculated position
             let enemy = commands.spawn(Enemy::new(Vec2::new(pos_x, pos_y))).id();
-            println!("Enemy spawned");
         }
         // Despawn enemies that go outside a radius of 400 pixels from rope point 0
         for (entity, mut enemy) in enemies.iter_mut() {
             let distance_to_rope_point_0 = enemy.position.distance(rope_point_position);
             if distance_to_rope_point_0 > 500.0 {
                 commands.entity(entity).despawn();
-                println!("Enemy despawned");
             }
         }
     }
@@ -362,7 +354,6 @@ fn spawn_food(
 
             // Spawn the food at the calculated position
             let piece = commands.spawn(Food::new(Vec2::new(pos_x, pos_y)));
-            println!("Food spawned");
         }
         for (entity, mut piece) in food.iter_mut() {
             let mut too_close = false;
@@ -375,28 +366,24 @@ fn spawn_food(
             }
             if too_close {
                 commands.entity(entity).despawn();
-                println!("Food despawned");
             }
         }
     }
 }
 
 fn rope_collisions(ropes: Query<&Rope>, mut enemies: Query<&mut Enemy>) {
-    for _ in 0..SUBSTEPS {
-        for rope in ropes.iter() {
-            for point in &rope.points {
-                for mut enemy in enemies.iter_mut() {
-                    let distance = point.distance(enemy.position);
-                    let collision_radius = rope.thickness / 2.0 + enemy.radius;
-                    if distance < collision_radius {
-                        // Calculate the correction vector
-                        let direction = (enemy.position - *point).normalize();
-                        let correction =
-                            direction * (collision_radius - distance) / SUBSTEPS as f32;
+    for rope in ropes.iter() {
+        for point in &rope.points {
+            for mut enemy in enemies.iter_mut() {
+                let distance = point.distance(enemy.position);
+                let collision_radius = rope.thickness / 2.0 + enemy.radius;
+                if distance < collision_radius {
+                    // Calculate the correction vector
+                    let direction = (enemy.position - *point).normalize();
+                    let correction = direction * (collision_radius - distance);
 
-                        // Apply the correction to the enemy position
-                        enemy.position += correction;
-                    }
+                    // Apply the correction to the enemy position
+                    enemy.position += correction;
                 }
             }
         }
@@ -404,20 +391,18 @@ fn rope_collisions(ropes: Query<&Rope>, mut enemies: Query<&mut Enemy>) {
 }
 
 fn enemy_collisions(mut enemies: Query<&mut Enemy>) {
-    for _ in 0..SUBSTEPS {
-        let mut enemy_combinations = enemies.iter_combinations_mut();
-        while let Some([mut enemy_a, mut enemy_b]) = enemy_combinations.fetch_next() {
-            let distance = enemy_a.position.distance(enemy_b.position);
-            let collision_radius = enemy_a.radius + enemy_b.radius; // Radius of the enemy collision sphere
-            if distance < collision_radius {
-                // Calculate the correction vector
-                let direction = (enemy_a.position - enemy_b.position).normalize();
-                let correction = direction * (collision_radius - distance) / 2.0 / SUBSTEPS as f32;
+    let mut enemy_combinations = enemies.iter_combinations_mut();
+    while let Some([mut enemy_a, mut enemy_b]) = enemy_combinations.fetch_next() {
+        let distance = enemy_a.position.distance(enemy_b.position);
+        let collision_radius = enemy_a.radius + enemy_b.radius; // Radius of the enemy collision sphere
+        if distance < collision_radius {
+            // Calculate the correction vector
+            let direction = (enemy_a.position - enemy_b.position).normalize();
+            let correction = direction * (collision_radius - distance) / 2.0;
 
-                // Apply the correction to both enemy positions
-                enemy_a.position += correction;
-                enemy_b.position -= correction;
-            }
+            // Apply the correction to both enemy positions
+            enemy_a.position += correction;
+            enemy_b.position -= correction;
         }
     }
 }
